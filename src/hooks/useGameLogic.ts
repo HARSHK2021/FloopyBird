@@ -12,8 +12,8 @@ interface Pipe {
   passed: boolean;
 }
 
-const GRAVITY = 0.4;
-const JUMP_FORCE = -8;
+const GRAVITY = 0.1;
+const JUMP_FORCE = -2;
 const BIRD_SIZE = 30;
 const PIPE_WIDTH = 60;
 const PIPE_GAP = 170;
@@ -32,6 +32,9 @@ const useGameLogic = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
+
+  const [pipeSpeed, setPipeSpeed] = useState(PIPE_SPEED);
+  const lastSpeedIncrementScore = useRef(0); // Track last score when speed increased
 
   const birdRef = useRef<Bird>({ y: 300, velocity: 0, rotation: 0 });
   const pipesRef = useRef<Pipe[]>([]);
@@ -80,9 +83,7 @@ const useGameLogic = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
       if (newMuted) {
         audioRef.current.bgm?.pause();
       } else {
-        audioRef.current.bgm?.play().catch(() => {
-          // Silently handle autoplay restrictions
-        });
+        audioRef.current.bgm?.play().catch(() => {});
       }
       return newMuted;
     });
@@ -92,7 +93,6 @@ const useGameLogic = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     const minHeight = 100;
     const maxHeight = canvasRef.current!.height - PIPE_GAP - minHeight;
     const topHeight = Math.random() * (maxHeight - minHeight) + minHeight;
-    
     return {
       x: canvasRef.current!.width,
       topHeight,
@@ -161,7 +161,7 @@ const useGameLogic = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     ctx.beginPath();
     ctx.arc(8, -5, 5, 0, Math.PI * 2);
     ctx.fill();
-    
+
     ctx.fillStyle = 'black';
     ctx.beginPath();
     ctx.arc(10, -5, 2, 0, Math.PI * 2);
@@ -188,7 +188,7 @@ const useGameLogic = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     // Update bird
     birdRef.current.velocity += GRAVITY;
     birdRef.current.y += birdRef.current.velocity;
-    
+
     // Update bird rotation based on velocity
     const targetRotation = birdRef.current.velocity * 0.04;
     birdRef.current.rotation += (targetRotation - birdRef.current.rotation) * 0.1;
@@ -202,11 +202,21 @@ const useGameLogic = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
 
     pipesRef.current = pipesRef.current.filter(pipe => pipe.x > -PIPE_WIDTH);
     pipesRef.current.forEach(pipe => {
-      pipe.x -= PIPE_SPEED;
-      
+      pipe.x -= pipeSpeed;
       if (!pipe.passed && pipe.x + PIPE_WIDTH < 50) {
         pipe.passed = true;
-        setScore(prev => prev + 1);
+        setScore(prev => {
+          const newScore = prev + 1;
+          // Increase speed every 20 points, only once for each milestone
+          if (
+            newScore % 20 === 0 &&
+            lastSpeedIncrementScore.current !== newScore
+          ) {
+            setPipeSpeed(prevSpeed => prevSpeed + 0.2); // Or any increment you prefer
+            lastSpeedIncrementScore.current = newScore;
+          }
+          return newScore;
+        });
         playSound('score');
       }
     });
@@ -256,7 +266,7 @@ const useGameLogic = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     });
 
     animationFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [gameState, score]);
+  }, [gameState, score, pipeSpeed]); // Add pipeSpeed to dependencies
 
   useEffect(() => {
     if (gameState === 'playing') {
@@ -275,6 +285,8 @@ const useGameLogic = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     lastPipeSpawnRef.current = Date.now();
     setScore(0);
     setGameState('playing');
+    setPipeSpeed(PIPE_SPEED); // Reset pipe speed at start
+    lastSpeedIncrementScore.current = 0; // Reset milestone tracking
     if (!isMuted) {
       audioRef.current.bgm?.play().catch(() => {
         // Silently handle autoplay restrictions
